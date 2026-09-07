@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client"
+  output = "../src/generated/prisma"
+  moduleFormat = "cjs"
+  importFileExtension = ""
+}
+datasource db {
+  provider = "postgresql"
+}
+enum ContentStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  HIDDEN
+  ARCHIVED
+}
+enum OsmType {
+  node
+  way
+  relation
+}
+model Restaurant {
+  id String @id @default(uuid()) @db.Uuid
+  name String @db.VarChar(200)
+  normalizedName String @default("") @db.VarChar(200)
+  area String @db.VarChar(100)
+  address String @db.VarChar(500)
+  latitude Float
+  longitude Float
+  location Unsupported("geography(Point,4326)")?
+  contentStatus ContentStatus @default(DRAFT)
+  verified Boolean @default(false)
+  open Boolean @default(false)
+  version Int @default(1)
+  fieldProvenance Json
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  osmRecords OsmRecord[]
+  dishes Dish[]
+  @@index([contentStatus, id])
+}
+model Dish {
+  id String @id @default(uuid()) @db.Uuid
+  restaurantId String @db.Uuid
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  name String @db.VarChar(200)
+  category String @db.VarChar(100)
+  price Int
+  image String
+  description String
+  servings Int @default(1)
+  available Boolean @default(false)
+  daily Boolean @default(false)
+  contentStatus ContentStatus @default(DRAFT)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@index([restaurantId, contentStatus])
+}
+model OsmRecord {
+  id String @id @default(uuid()) @db.Uuid
+  osmType OsmType
+  osmId BigInt
+  osmVersion Int?
+  snapshotAt DateTime @db.Timestamptz(3)
+  candidate Json
+  restaurantId String? @db.Uuid
+  restaurant Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([osmType, osmId])
+}
+model OsmImportRun {
+  id String @id @default(uuid()) @db.Uuid
+  commandHash String @unique @db.VarChar(64)
+  actor String @db.VarChar(100)
+  snapshotAt DateTime @db.Timestamptz(3)
+  result Json
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}

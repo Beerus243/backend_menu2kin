@@ -1,0 +1,632 @@
+// ARCHITECTURE PROPOSÉE. Prisma 7; geography/search/indexes: voir les SQL adjacents.
+// Ce fichier n'est pas encore raccordé à l'application NestJS.
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  EDITOR
+  MODERATOR
+}
+
+enum RestaurantStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  TEMPORARILY_CLOSED
+  PERMANENTLY_CLOSED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  VERIFIED
+}
+
+enum PublicationStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum Availability {
+  AVAILABLE
+  UNAVAILABLE
+  SEASONAL
+}
+
+enum ReviewStatus {
+  PENDING
+  PUBLISHED
+  HIDDEN
+  FLAGGED
+  DELETED
+}
+
+enum ReportStatus {
+  OPEN
+  DISMISSED
+  ACTIONED
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+}
+
+enum SharePlatform {
+  WHATSAPP
+  FACEBOOK
+  MESSENGER
+  COPY_LINK
+  OTHER
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum MediaStatus {
+  PENDING
+  READY
+  REJECTED
+  DELETING
+  DELETED
+}
+
+enum ContactKind {
+  PHONE
+  WHATSAPP
+  WEBSITE
+}
+
+enum ServiceKind {
+  DINE_IN
+  TAKEAWAY
+  TERRACE
+  PARKING
+  WIFI
+}
+
+enum OtpPurpose {
+  LOGIN
+  PHONE_CHANGE
+}
+
+enum EventKind {
+  DISH_VIEW
+  RESTAURANT_VIEW
+  SEARCH
+  SEARCH_FILTER
+  LIKE
+  FAVORITE
+  SHARE
+  REVIEW_CREATED
+  BUDGET_SEARCH
+  DAILY_MENU_VIEW
+  WHATSAPP_CLICK
+  PHONE_CLICK
+  DIRECTIONS_CLICK
+}
+
+model User {
+  id            String           @id @default(uuid()) @db.Uuid
+  phone         String?          @unique @db.VarChar(16)
+  googleSubject String?          @unique @db.VarChar(255)
+  displayName   String           @db.VarChar(80)
+  status        UserStatus       @default(ACTIVE)
+  createdAt     DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime         @updatedAt @db.Timestamptz(3)
+  deletedAt     DateTime?        @db.Timestamptz(3)
+  preference    UserPreference?
+  admin         AdminUser?
+  sessions      Session[]
+  likes         Like[]
+  favorites     Favorite[]
+  shares        Share[]
+  reviews       Review[]
+  reports       ReviewReport[]
+  devices       Device[]
+  notifications Notification[]
+  events        AnalyticsEvent[]
+  uploads       MediaAsset[]
+  otpChallenges OtpChallenge[]
+}
+
+model UserPreference {
+  userId              String   @id @db.Uuid
+  locale              String   @default("fr-CD") @db.VarChar(16)
+  pushEnabled         Boolean  @default(false)
+  analyticsEnabled    Boolean  @default(false)
+  preferredCategories String[] @default([]) // slugs validés; pas de duplication métier
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AdminUser {
+  oidcSubject String     @unique @db.VarChar(255) // issuer admin configuré unique
+  userId      String     @id @db.Uuid
+  role        AdminRole
+  enabled     Boolean    @default(true)
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime   @updatedAt @db.Timestamptz(3)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  auditLogs   AuditLog[]
+}
+
+model Session {
+  id         String         @id @default(uuid()) @db.Uuid
+  userId     String         @db.Uuid
+  expiresAt  DateTime       @db.Timestamptz(3)
+  revokedAt  DateTime?      @db.Timestamptz(3)
+  adminMfaAt DateTime?      @db.Timestamptz(3)
+  createdAt  DateTime       @default(now()) @db.Timestamptz(3)
+  lastSeenAt DateTime       @default(now()) @db.Timestamptz(3)
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokens     RefreshToken[]
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  sessionId String    @db.Uuid
+  tokenHash String    @unique @db.Char(64)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model OtpChallenge {
+  id         String     @id @default(uuid()) @db.Uuid
+  phone      String     @db.VarChar(16)
+  purpose    OtpPurpose
+  userId     String?    @db.Uuid
+  codeHash   String     @db.Char(64)
+  attempts   Int        @default(0)
+  expiresAt  DateTime   @db.Timestamptz(3)
+  consumedAt DateTime?  @db.Timestamptz(3)
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([phone, purpose, createdAt])
+  @@index([expiresAt])
+}
+
+model Restaurant {
+  id                 String                                @id @default(uuid()) @db.Uuid
+  slug               String                                @unique @db.VarChar(160)
+  name               String                                @db.VarChar(160)
+  description        String?                               @db.VarChar(4000)
+  address            String                                @db.VarChar(300)
+  neighborhood       String?                               @db.VarChar(100)
+  commune            String                                @db.VarChar(100)
+  latitude           Decimal                               @db.Decimal(9, 6)
+  longitude          Decimal                               @db.Decimal(9, 6)
+  location           Unsupported("geography(Point,4326)")? // SQL trigger + NOT NULL après création
+  timezone           String                                @default("Africa/Kinshasa") @db.VarChar(64)
+  logoId             String?                               @db.Uuid
+  coverImageId       String?                               @db.Uuid
+  status             RestaurantStatus                      @default(DRAFT)
+  verificationStatus VerificationStatus                    @default(UNVERIFIED)
+  version            Int                                   @default(1)
+  ratingSum          Int                                   @default(0)
+  reviewCount        Int                                   @default(0)
+  ratingDistribution Int[]                                 @default([0, 0, 0, 0, 0])
+  createdAt          DateTime                              @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                              @updatedAt @db.Timestamptz(3)
+  deletedAt          DateTime?                             @db.Timestamptz(3)
+  logo               MediaAsset?                           @relation("RestaurantLogo", fields: [logoId], references: [id], onDelete: Restrict)
+  coverImage         MediaAsset?                           @relation("RestaurantCover", fields: [coverImageId], references: [id], onDelete: Restrict)
+  contacts           RestaurantContact[]
+  openingHours       RestaurantOpeningHour[]
+  openingExceptions  RestaurantOpeningException[]
+  services           RestaurantService[]
+  menus              Menu[]
+  dishes             Dish[]
+  dailyMenus         DailyMenu[]
+  favorites          Favorite[]
+  reviews            Review[]
+  shares             Share[]
+
+  @@index([status, createdAt, id])
+  @@index([commune, status])
+}
+
+model RestaurantContact {
+  id           String      @id @default(uuid()) @db.Uuid
+  restaurantId String      @db.Uuid
+  kind         ContactKind
+  value        String      @db.VarChar(300)
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, kind, value])
+}
+
+model RestaurantOpeningHour {
+  id           String     @id @default(uuid()) @db.Uuid
+  restaurantId String     @db.Uuid
+  weekday      Int // ISO 1..7; les intervalles traversant minuit sont scindés
+  opensMinute  Int // 0..1439
+  closesMinute Int // 1..1440, strictement supérieur à opensMinute
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, weekday, opensMinute])
+}
+
+model RestaurantOpeningException {
+  id           String     @id @default(uuid()) @db.Uuid
+  restaurantId String     @db.Uuid
+  date         DateTime   @db.Date
+  intervals    Json // [] = fermé; sinon [{opensMinute,closesMinute}], schéma DTO strict
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, date])
+}
+
+model RestaurantService {
+  restaurantId String      @db.Uuid
+  kind         ServiceKind
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@id([restaurantId, kind])
+}
+
+model Menu {
+  id           String            @id @default(uuid()) @db.Uuid
+  restaurantId String            @db.Uuid
+  slug         String            @unique @db.VarChar(160)
+  name         String            @db.VarChar(160)
+  position     Int               @default(0)
+  status       PublicationStatus @default(DRAFT)
+  version      Int               @default(1)
+  publishedAt  DateTime?         @db.Timestamptz(3)
+  createdAt    DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime          @updatedAt @db.Timestamptz(3)
+  deletedAt    DateTime?         @db.Timestamptz(3)
+  restaurant   Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  categories   MenuCategory[]
+  shares       Share[]
+
+  @@unique([id, restaurantId])
+  @@index([restaurantId, status, position, id])
+}
+
+model MenuCategory {
+  id           String    @id @default(uuid()) @db.Uuid
+  menuId       String    @db.Uuid
+  restaurantId String    @db.Uuid
+  name         String    @db.VarChar(100)
+  position     Int       @default(0)
+  visible      Boolean   @default(true)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt    DateTime? @db.Timestamptz(3)
+  menu         Menu      @relation(fields: [menuId, restaurantId], references: [id, restaurantId], onDelete: Restrict)
+  dishes       Dish[]
+
+  @@unique([id, restaurantId])
+  @@index([menuId, position, id])
+}
+
+model Dish {
+  id              String             @id @default(uuid()) @db.Uuid
+  restaurantId    String             @db.Uuid
+  menuCategoryId  String             @db.Uuid
+  name            String             @db.VarChar(160)
+  slug            String             @unique @db.VarChar(160)
+  description     String?            @db.VarChar(2000)
+  priceCdf        Decimal            @db.Decimal(14, 2)
+  priceUsd        Decimal?           @db.Decimal(12, 2)
+  priceVerifiedAt DateTime?          @db.Timestamptz(3)
+  availability    Availability       @default(UNAVAILABLE)
+  status          PublicationStatus  @default(DRAFT)
+  featured        Boolean            @default(false)
+  servesPeople    Int? // null = couverture inconnue, exclu du moteur budget
+  isMainDish      Boolean            @default(false)
+  position        Int                @default(0)
+  version         Int                @default(1)
+  likeCount       Int                @default(0)
+  favoriteCount   Int                @default(0)
+  shareCount      Int                @default(0)
+  createdAt       DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @db.Timestamptz(3)
+  deletedAt       DateTime?          @db.Timestamptz(3)
+  restaurant      Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  menuCategory    MenuCategory       @relation(fields: [menuCategoryId, restaurantId], references: [id, restaurantId], onDelete: Restrict)
+  media           DishMedia[]
+  categories      DishFoodCategory[]
+  dailyMenuItems  DailyMenuItem[]
+  likes           Like[]
+  favorites       Favorite[]
+  shares          Share[]
+  trends          DishTrend[]
+
+  @@unique([id, restaurantId])
+  @@index([restaurantId, availability, priceCdf])
+  @@index([menuCategoryId, position, id])
+  @@index([status, createdAt, id])
+}
+
+model FoodCategory {
+  id        String             @id @default(uuid()) @db.Uuid
+  slug      String             @unique @db.VarChar(100)
+  name      String             @db.VarChar(100)
+  position  Int                @default(0)
+  visible   Boolean            @default(true)
+  updatedAt DateTime           @updatedAt @db.Timestamptz(3)
+  dishes    DishFoodCategory[]
+}
+
+model DishFoodCategory {
+  dishId     String       @db.Uuid
+  categoryId String       @db.Uuid
+  dish       Dish         @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  category   FoodCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@id([dishId, categoryId])
+  @@index([categoryId, dishId])
+}
+
+model MediaAsset {
+  id           String       @id @default(uuid()) @db.Uuid
+  uploadedById String       @db.Uuid
+  publicId     String       @unique @db.VarChar(255)
+  assetId      String?      @unique @db.VarChar(255)
+  version      Int?
+  format       String?      @db.VarChar(10)
+  width        Int?
+  height       Int?
+  bytes        Int?
+  status       MediaStatus  @default(PENDING)
+  expiresAt    DateTime     @db.Timestamptz(3)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  dishes       DishMedia[]
+  logos        Restaurant[] @relation("RestaurantLogo")
+  covers       Restaurant[] @relation("RestaurantCover")
+
+  @@index([status, expiresAt])
+}
+
+model DishMedia {
+  dishId   String     @db.Uuid
+  assetId  String     @db.Uuid
+  position Int        @default(0)
+  altText  String?    @db.VarChar(200)
+  dish     Dish       @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  asset    MediaAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@id([dishId, assetId])
+  @@unique([dishId, position])
+  @@index([assetId])
+}
+
+model DailyMenu {
+  id           String            @id @default(uuid()) @db.Uuid
+  restaurantId String            @db.Uuid
+  date         DateTime          @db.Date
+  startsAt     DateTime          @db.Timestamptz(3)
+  expiresAt    DateTime          @db.Timestamptz(3)
+  status       PublicationStatus @default(DRAFT)
+  version      Int               @default(1)
+  createdAt    DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime          @updatedAt @db.Timestamptz(3)
+  deletedAt    DateTime?         @db.Timestamptz(3)
+  restaurant   Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  items        DailyMenuItem[]
+
+  @@unique([restaurantId, date])
+  @@unique([id, restaurantId])
+  @@index([date, status, id])
+}
+
+model DailyMenuItem {
+  dailyMenuId  String    @db.Uuid
+  dishId       String    @db.Uuid
+  restaurantId String    @db.Uuid
+  position     Int       @default(0)
+  available    Boolean   @default(true)
+  dailyMenu    DailyMenu @relation(fields: [dailyMenuId, restaurantId], references: [id, restaurantId], onDelete: Cascade)
+  dish         Dish      @relation(fields: [dishId, restaurantId], references: [id, restaurantId], onDelete: Restrict)
+
+  @@id([dailyMenuId, dishId])
+  @@index([dishId, restaurantId])
+}
+
+model Like {
+  userId    String   @db.Uuid
+  dishId    String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dish      Dish     @relation(fields: [dishId], references: [id], onDelete: Cascade)
+
+  @@id([userId, dishId])
+  @@index([dishId, createdAt])
+}
+
+model Favorite {
+  id           String      @id @default(uuid()) @db.Uuid
+  userId       String      @db.Uuid
+  dishId       String?     @db.Uuid
+  restaurantId String?     @db.Uuid
+  createdAt    DateTime    @default(now()) @db.Timestamptz(3)
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dish         Dish?       @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dishId])
+  @@unique([userId, restaurantId])
+  @@index([userId, createdAt, id])
+  @@index([dishId])
+  @@index([restaurantId])
+}
+
+model Share {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String?       @db.Uuid
+  actorHash    String        @db.Char(64)
+  requestId    String        @db.Uuid
+  dishId       String?       @db.Uuid
+  restaurantId String?       @db.Uuid
+  menuId       String?       @db.Uuid
+  platform     SharePlatform
+  source       String        @db.VarChar(40)
+  qualified    Boolean       @default(false)
+  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  dish         Dish?         @relation(fields: [dishId], references: [id], onDelete: Restrict)
+  restaurant   Restaurant?   @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  menu         Menu?         @relation(fields: [menuId], references: [id], onDelete: Restrict)
+
+  @@unique([actorHash, requestId])
+  @@index([dishId, createdAt])
+  @@index([restaurantId, createdAt])
+  @@index([menuId, createdAt])
+}
+
+model Review {
+  id           String         @id @default(uuid()) @db.Uuid
+  userId       String         @db.Uuid
+  restaurantId String         @db.Uuid
+  rating       Int
+  text         String?        @db.VarChar(2000)
+  status       ReviewStatus   @default(PENDING)
+  version      Int            @default(1)
+  publishedAt  DateTime?      @db.Timestamptz(3)
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime       @updatedAt @db.Timestamptz(3)
+  deletedAt    DateTime?      @db.Timestamptz(3)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  restaurant   Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  reports      ReviewReport[]
+
+  @@unique([userId, restaurantId])
+  @@index([restaurantId, status, publishedAt, id])
+  @@index([userId, updatedAt, id])
+  @@index([status, createdAt, id])
+}
+
+model ReviewReport {
+  id         String       @id @default(uuid()) @db.Uuid
+  reviewId   String       @db.Uuid
+  reporterId String       @db.Uuid
+  reason     String       @db.VarChar(500)
+  status     ReportStatus @default(OPEN)
+  createdAt  DateTime     @default(now()) @db.Timestamptz(3)
+  resolvedAt DateTime?    @db.Timestamptz(3)
+  review     Review       @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reporter   User         @relation(fields: [reporterId], references: [id], onDelete: Restrict)
+
+  @@unique([reviewId, reporterId])
+  @@index([status, createdAt, id])
+}
+
+model Device {
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @db.Uuid
+  installationId String         @unique @db.Uuid
+  platform       DevicePlatform
+  tokenHash      String         @unique @db.Char(64)
+  tokenEncrypted String         @db.Text
+  lastSeenAt     DateTime       @default(now()) @db.Timestamptz(3)
+  enabled        Boolean        @default(true)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, enabled])
+}
+
+model Notification {
+  id        String             @id @default(uuid()) @db.Uuid
+  userId    String             @db.Uuid
+  eventKey  String             @db.VarChar(200)
+  title     String             @db.VarChar(160)
+  body      String             @db.VarChar(500)
+  deepLink  String             @db.VarChar(300)
+  status    NotificationStatus @default(PENDING)
+  readAt    DateTime?          @db.Timestamptz(3)
+  sentAt    DateTime?          @db.Timestamptz(3)
+  createdAt DateTime           @default(now()) @db.Timestamptz(3)
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventKey])
+  @@index([userId, createdAt, id])
+}
+
+model AnalyticsEvent {
+  id           String    @id @default(uuid()) @db.Uuid
+  kind         EventKind
+  userId       String?   @db.Uuid
+  actorHash    String    @db.Char(64)
+  resourceType String?   @db.VarChar(30)
+  resourceId   String?   @db.Uuid // référence historique, volontairement sans FK
+  metadata     Json      @default("{}")
+  qualified    Boolean   @default(false)
+  occurredAt   DateTime  @default(now()) @db.Timestamptz(3)
+  user         User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([kind, occurredAt])
+  @@index([resourceType, resourceId, occurredAt])
+}
+
+model DishTrend {
+  snapshotAt DateTime @db.Timestamptz(3)
+  dishId     String   @db.Uuid
+  score      Decimal  @db.Decimal(18, 6)
+  components Json
+  dish       Dish     @relation(fields: [dishId], references: [id], onDelete: Cascade)
+
+  @@id([snapshotAt, dishId])
+  @@index([snapshotAt, score, dishId])
+}
+
+model AuditLog {
+  id           String     @id @default(uuid()) @db.Uuid
+  actorId      String?    @db.Uuid // null pour worker, identité dans actorLabel
+  actorLabel   String     @db.VarChar(100)
+  action       String     @db.VarChar(100)
+  resourceType String     @db.VarChar(40)
+  resourceId   String     @db.Uuid
+  before       Json?
+  after        Json?
+  reason       String?    @db.VarChar(500)
+  requestId    String     @db.VarChar(100)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  actor        AdminUser? @relation(fields: [actorId], references: [userId], onDelete: Restrict)
+
+  @@index([resourceType, resourceId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model OutboxEvent {
+  id            String    @id @default(uuid()) @db.Uuid
+  type          String    @db.VarChar(100)
+  aggregateType String    @db.VarChar(40)
+  aggregateId   String    @db.Uuid
+  payload       Json
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  deliveredAt   DateTime? @db.Timestamptz(3)
+  attempts      Int       @default(0)
+
+  @@index([deliveredAt, createdAt])
+}

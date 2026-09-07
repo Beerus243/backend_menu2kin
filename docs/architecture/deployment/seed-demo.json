@@ -1,0 +1,27 @@
+{
+  "fixtureVersion": 1,
+  "demoOnly": true,
+  "categories": [
+    {"slug":"poulet","name":"Poulet"},
+    {"slug":"accompagnements","name":"Accompagnements"},
+    {"slug":"boissons","name":"Boissons"}
+  ],
+  "restaurant": {
+    "slug":"demo-menu2kin-gombe",
+    "name":"Démo Menu2Kin Gombe — établissement fictif",
+    "description":"Données de test uniquement. Ne correspond pas à un restaurant réel.",
+    "address":"Point de test fictif, ne pas utiliser pour se déplacer",
+    "commune":"Gombe",
+    "latitude":-4.303,
+    "longitude":15.303,
+    "status":"ACTIVE",
+    "verificationStatus":"UNVERIFIED"
+  },
+  "menu": {"slug":"demo-menu-principal","name":"Menu de démonstration"},
+  "menuCategories": [{"name":"Plats","position":0},{"name":"Accompagnements","position":1}],
+  "dishes": [
+    {"slug":"demo-poulet","name":"Poulet démo","menuCategoryPosition":0,"priceCdf":"14000.00","servesPeople":1,"isMainDish":true,"availability":"AVAILABLE"},
+    {"slug":"demo-plat-collectif","name":"Plat collectif démo","menuCategoryPosition":0,"priceCdf":"25000.00","servesPeople":3,"isMainDish":true,"availability":"AVAILABLE"},
+    {"slug":"demo-accompagnement","name":"Accompagnement démo","menuCategoryPosition":1,"priceCdf":"8000.00","servesPeople":null,"isMainDish":false,"availability":"AVAILABLE"}
+  ]
+}

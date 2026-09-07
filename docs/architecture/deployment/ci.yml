@@ -1,0 +1,65 @@
+# MODÈLE NON ACTIF : copier vers .github/workflows/ci.yml après prérequis 04-operations.md.
+name: Backend CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_USER: menu2kin
+          POSTGRES_PASSWORD: ci-ephemeral-only
+          POSTGRES_DB: menu2kin_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U menu2kin -d menu2kin_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://menu2kin:ci-ephemeral-only@localhost:5432/menu2kin_test
+      DIRECT_DATABASE_URL: postgresql://menu2kin:ci-ephemeral-only@localhost:5432/menu2kin_test
+      REDIS_URL: redis://localhost:6379/0
+      REDIS_CACHE_URL: redis://localhost:6379/1
+      OTP_PROVIDER: disabled
+      PUSH_ENABLED: 'false'
+      MEDIA_ENABLED: 'false'
+      MEILISEARCH_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - name: Ephemeral test keys
+        run: |
+          for key in JWT_SECRET REFRESH_TOKEN_PEPPER OTP_PEPPER CURSOR_SECRET ANONYMOUS_TOKEN_SECRET ANALYTICS_HASH_KEY SHARE_ACTOR_HASH_KEY DEVICE_ENCRYPTION_KEY DEVICE_TOKEN_HASH_KEY; do
+            value=$(openssl rand -hex 32)
+            echo "::add-mask::$value"
+            echo "$key=$value" >> "$GITHUB_ENV"
+          done
+      - run: npm ci
+      - run: npm run prisma:generate
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run test:unit -- --runInBand
+      - run: npm run prisma:migrate:deploy
+      - run: npm run test:integration -- --runInBand
+      - run: npm run test:e2e -- --runInBand
+      - run: npm run openapi:check
+      - run: npm run build
+      - run: docker build --target runtime -f docs/architecture/deployment/Dockerfile -t menu2kin-api:${{ github.sha }} .
+      - run: docker build --target migration -f docs/architecture/deployment/Dockerfile -t menu2kin-migration:${{ github.sha }} .

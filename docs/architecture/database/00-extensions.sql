@@ -1,0 +1,5 @@
+-- PROPOSITION SQL: exécuter avant le DDL généré depuis schema.prisma.
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS unaccent;
+CREATE EXTENSION IF NOT EXISTS btree_gist;

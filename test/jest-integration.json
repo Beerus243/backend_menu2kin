@@ -1,0 +1,25 @@
+{
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "transform": {
+    "^.+\\.ts$": [
+      "ts-jest",
+      {
+        "useESM": true,
+        "tsconfig": "<rootDir>/tsconfig.test.json"
+      }
+    ]
+  },
+  "testMatch": [
+    "<rootDir>/test/**/*.integration-spec.ts"
+  ],
+  "extensionsToTreatAsEsm": [
+    ".ts"
+  ],
+  "testTimeout": 30000
+}

@@ -1,0 +1,7 @@
+{
+  "version": 0.6,
+  "elements": [
+    {"type":"node","id":900000001,"version":1,"lat":-4.3101,"lon":15.3001,"tags":{"amenity":"restaurant","name":"Exemple fictif Menu2Kin","addr:street":"Rue fictive","addr:city":"Kinshasa","cuisine":"african"}},
+    {"type":"node","id":900000002,"version":1,"lat":-4.3102,"lon":15.3002,"tags":{"amenity":"cafe"}}
+  ]
+}

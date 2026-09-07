@@ -1,0 +1,90 @@
+# MODÈLE NON ACTIF. Clusters, secrets et deployments préexistants exigés.
+# Main vérifiée -> staging automatique. Production -> dispatch + environnement protégé.
+name: Backend release
+on:
+  workflow_run:
+    workflows: [Backend CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: SHA complet déjà validé et déployé en staging
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && 'production' || 'staging' }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - id: version
+        env:
+          IMAGE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: echo "sha=$IMAGE_SHA" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docs/architecture/deployment/Dockerfile
+          target: runtime
+          push: true
+          tags: ghcr.io/${{ vars.IMAGE_REPOSITORY }}:${{ steps.version.outputs.sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docs/architecture/deployment/Dockerfile
+          target: migration
+          push: true
+          tags: ghcr.io/${{ vars.IMAGE_REPOSITORY }}:${{ steps.version.outputs.sha }}-migration
+  staging:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      IMAGE_SHA: ${{ needs.publish.outputs.sha }}
+      IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY }}
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      NAMESPACE: menu2kin-staging
+      SMOKE_URL: ${{ vars.API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ needs.publish.outputs.sha }}'}
+      - uses: azure/setup-kubectl@v4
+        with: {version: 'v1.32.0'}
+      - run: bash docs/architecture/deployment/rollout.sh
+  production:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production # required reviewers à configurer dans GitHub
+    env:
+      IMAGE_SHA: ${{ inputs.image_sha }}
+      IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY }}
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      NAMESPACE: menu2kin-production
+      SMOKE_URL: ${{ vars.API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with: {version: 'v1.32.0'}
+      - name: Verify explicit staging approval record
+        env:
+          STAGING_APPROVED_SHA: ${{ vars.STAGING_APPROVED_SHA }}
+        run: test "$IMAGE_SHA" = "$STAGING_APPROVED_SHA"
+      - run: bash docs/architecture/deployment/rollout.sh
