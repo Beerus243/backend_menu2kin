@@ -1,0 +1,4 @@
+ALTER TABLE "Restaurant"
+  ADD COLUMN "phone" VARCHAR(50),
+  ADD COLUMN "website" VARCHAR(500),
+  ADD COLUMN "cuisine" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

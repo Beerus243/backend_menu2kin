@@ -185,6 +185,9 @@ export class OsmImportService {
               name: candidate.name,
               area: options.area,
               address,
+              phone: candidate.phoneRaw,
+              website: candidate.website,
+              cuisine: candidate.cuisine,
               latitude: point.latitude,
               longitude: point.longitude,
               fieldProvenance: asJson({

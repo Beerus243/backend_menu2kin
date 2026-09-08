@@ -60,7 +60,37 @@ Les montants du contrat mobile restent des FC entiers, avec `priceCdf` à deux d
 
 ## Accès et publication
 
-L'import est une commande privilégiée réservée à l'opérateur ayant accès au serveur et aux credentials DB. `--actor` sert la traçabilité déclarative, **pas une authentification**. Il n'existe aucune route admin d'import/publication accessible sans garde. JWT/RBAC, revue et publication métier, ajout de menus/plats/prix, correction des candidats et export ODbL doivent être implémentés avant un parcours éditorial complet.
+L'import CLI reste une commande privilégiée réservée à l'opérateur ayant accès au serveur et aux credentials DB. `--actor` sert la traçabilité déclarative, **pas une authentification**. L'API admin minimale ci-dessous exige une clé dédiée, mais cette clé n'est pas encore un vrai système JWT/RBAC/MFA. La revue avancée, l'ajout de menus/plats/prix, la correction des candidats et l'export ODbL restent nécessaires avant un parcours éditorial complet.
+
+### Première API admin de collecte
+
+Le backend expose maintenant un workflow minimal pour le dashboard interne lorsque
+`CATALOG_SOURCE=postgres` :
+
+```text
+POST  /api/v1/admin/osm/imports
+GET   /api/v1/admin/restaurants?status=DRAFT
+GET   /api/v1/admin/restaurants/:id
+PATCH /api/v1/admin/restaurants/:id
+POST  /api/v1/admin/restaurants/:id/publish
+```
+
+Ces routes exigent `x-admin-key: $ADMIN_API_KEY`. Cette clé est uniquement un
+pont de développement ; elle devra être remplacée par JWT + RBAC + MFA avant
+une exposition réseau ou une mise en production.
+
+Le corps de l'import contient un export JSON Overpass déjà obtenu, l'acteur,
+la zone éditoriale, la date du snapshot UTC et une bbox limitée. L'API ne
+contacte aucun site tiers, ne visite pas les URLs `website` OSM et ne copie
+aucune photo ou menu. Les restaurants sont créés en `DRAFT` avec coordonnées,
+nom, adresse, téléphone/site/cuisine seulement lorsqu'ils existent dans OSM,
+et une provenance `ODbL-1.0`. Les champs manquants restent vides.
+
+L'édition manuelle permet de compléter l'adresse, le téléphone, le site, la
+cuisine et les coordonnées. Les prix, photos, menus et plats restent une
+étape éditoriale séparée : aucune donnée inventée n'est publiée. La route de
+publication vérifie au minimum le nom et l'adresse, conserve le lien OSM et
+marque explicitement le restaurant comme vérifié par l'équipe.
 
 La base locale supporte la publication pour tester ses filtres ; aucune commande publique ne permet de contourner la revue. Avant de diffuser des données dérivées OSM, réaliser l'attribution côté consommateur et le mécanisme d'export décrit dans le [dossier licence](openstreetmap/compliance.md). Le backend renvoie les mentions mais cela ne les affiche pas automatiquement dans Flutter.
 

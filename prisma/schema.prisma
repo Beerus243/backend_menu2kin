@@ -25,6 +25,9 @@ model Restaurant {
   normalizedName String @default("") @db.VarChar(200)
   area String @db.VarChar(100)
   address String @db.VarChar(500)
+  phone String? @db.VarChar(50)
+  website String? @db.VarChar(500)
+  cuisine String[] @default([])
   latitude Float
   longitude Float
   location Unsupported("geography(Point,4326)")?
