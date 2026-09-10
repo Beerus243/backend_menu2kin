@@ -1,3 +1,5 @@
+> Document de la première tranche. Pour la collecte Kinshasa, les champs nullables et les routes admin désormais actives, suivre le [guide V1](collection/USAGE.md).
+
 # Première intégration OSM persistante
 
 L'application supporte désormais deux sources explicites : `CATALOG_SOURCE=demo` pour les fixtures existantes, ou `postgres` pour le catalogue PostgreSQL. En mode postgres, aucun fallback fictif. Les formats Dish/Restaurant existants sont conservés ; les restaurants ajoutent coordonnées/adresse, les métadonnées indiquent la source et l'attribution OSM.

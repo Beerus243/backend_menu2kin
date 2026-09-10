@@ -1,0 +1,28 @@
+<!doctype html><title>Fixture fictive Menu2Kin</title>
+<script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      { "@id": "#geo", "latitude": "-4.31", "longitude": 15.3 },
+      {
+        "@id": "#address",
+        "@type": "PostalAddress",
+        "streetAddress": "Rue fictive 1",
+        "addressLocality": "Gombe"
+      },
+      {
+        "@id": "#resto",
+        "@type": ["LocalBusiness", "Restaurant"],
+        "name": " Table Test Kinshasa ",
+        "geo": { "@id": "#geo" },
+        "address": { "@id": "#address" },
+        "telephone": "+243 800 000 000",
+        "url": "https://restaurant.example/",
+        "servesCuisine": "Congolaise;Grill",
+        "image": "https://example.invalid/protected.jpg",
+        "priceRange": "$$",
+        "aggregateRating": { "ratingValue": 5 }
+      }
+    ]
+  }
+</script>

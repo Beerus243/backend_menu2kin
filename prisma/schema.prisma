@@ -24,7 +24,9 @@ model Restaurant {
   name String @db.VarChar(200)
   normalizedName String @default("") @db.VarChar(200)
   area String @db.VarChar(100)
-  address String @db.VarChar(500)
+  address String? @db.VarChar(500)
+  photo String? @db.VarChar(1000)
+  openingHours String? @db.VarChar(1000)
   phone String? @db.VarChar(50)
   website String? @db.VarChar(500)
   cuisine String[] @default([])
@@ -38,6 +40,7 @@ model Restaurant {
   fieldProvenance Json
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  sourceRecords SourceRecord[]
   osmRecords OsmRecord[]
   dishes Dish[]
   @@index([contentStatus, id])
@@ -48,8 +51,10 @@ model Dish {
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
   name String @db.VarChar(200)
   category String @db.VarChar(100)
-  price Int
-  image String
+  version Int @default(1)
+  fieldProvenance Json @default("{}")
+  price Int?
+  image String?
   description String
   servings Int @default(1)
   available Boolean @default(false)
@@ -78,5 +83,28 @@ model OsmImportRun {
   actor String @db.VarChar(100)
   snapshotAt DateTime @db.Timestamptz(3)
   result Json
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+
+model SourceRecord {
+  id String @id @default(uuid()) @db.Uuid
+  sourceKey String @db.VarChar(100)
+  externalId String @db.VarChar(1000)
+  sourceUrl String @db.VarChar(1000)
+  rights Json
+  candidate Json
+  snapshotAt DateTime @db.Timestamptz(3)
+  restaurantId String? @db.Uuid
+  restaurant Restaurant? @relation(fields:[restaurantId],references:[id],onDelete:Restrict)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([sourceKey,externalId])
+}
+model AdminAudit {
+  id String @id @default(uuid()) @db.Uuid
+  actor String @db.VarChar(100)
+  action String @db.VarChar(100)
+  resourceId String? @db.Uuid
+  fields String[]
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 }

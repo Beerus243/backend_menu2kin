@@ -46,9 +46,15 @@ export class PostgresCatalogService {
       latitude: r.latitude,
       longitude: r.longitude,
       address: r.address,
+      phone: r.phone,
+      website: r.website,
+      photo: r.photo,
+      openingHours: r.openingHours,
+      cuisine: r.cuisine,
     };
   }
   private mapDish(d: DbDish & { restaurant: DbRestaurant }): Dish {
+    if (d.price === null) throw new Error('UNPRICED_PUBLIC_DISH');
     return {
       id: d.id,
       name: d.name,
@@ -80,6 +86,7 @@ export class PostgresCatalogService {
       );
     return {
       contentStatus: 'PUBLISHED',
+      price: { not: null },
       restaurant: {
         ...restaurantWhere,
         ...(query.area && query.area !== 'Tout Kinshasa'
@@ -165,7 +172,11 @@ export class PostgresCatalogService {
   }
   async categories() {
     const rows = await this.db.client.dish.findMany({
-      where: { contentStatus: 'PUBLISHED', restaurant: restaurantWhere },
+      where: {
+        contentStatus: 'PUBLISHED',
+        price: { not: null },
+        restaurant: restaurantWhere,
+      },
       distinct: ['category'],
       select: { category: true },
       orderBy: { category: 'asc' },

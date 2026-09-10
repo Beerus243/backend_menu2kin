@@ -2,9 +2,9 @@
 
 API NestJS intégrable au projet Flutter voisin `../menu2kin`.
 
-**État actuel :** catalogue de démonstration ou PostgreSQL/PostGIS via `CATALOG_SOURCE`. Import OSM local en brouillons persistants, contrôle des doublons et proximité PostGIS. Le format mobile reste compatible. Les routes admin, l’authentification, les menus complets et la publication éditoriale restent à développer ; aucune écriture HTTP admin n’est exposée.
+**État actuel :** catalogue demo ou PostgreSQL/PostGIS, collecte OSM Kinshasa, parser JSON-LD local pour sources autorisées, dry-run sans écriture, déduplication et saisie admin versionnée. Les routes admin utilisent une clé opérateur serveur ; ne pas embarquer cette clé dans Flutter. Photos/adresses inconnues sont `null`, les plats sans prix restent hors catalogue public.
 
-Voir le [guide de démarrage PostgreSQL et d’import OSM](docs/OSM-INTEGRATION.md).
+Voir le [guide V1 exécutable](docs/collection/USAGE.md) et la [recherche des sources, licences et architecture](docs/collection/README.md). Les formulaires dashboard, l’authentification admin multi-utilisateur et les menus complets restent à intégrer.
 
 ## Démarrage local
 

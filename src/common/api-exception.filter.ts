@@ -32,13 +32,21 @@ export class ApiExceptionFilter implements ExceptionFilter {
     response.status(status).json({
       error: {
         code:
-          status === 400
-            ? 'VALIDATION_ERROR'
-            : status === 404
-              ? 'RESOURCE_NOT_FOUND'
-              : status === 413
-                ? 'PAYLOAD_TOO_LARGE'
-                : 'INTERNAL_ERROR',
+          status === 401
+            ? 'UNAUTHORIZED'
+            : status === 409
+              ? 'CONFLICT'
+              : status === 429
+                ? 'RATE_LIMITED'
+                : status === 503
+                  ? 'SERVICE_UNAVAILABLE'
+                  : status === 400
+                    ? 'VALIDATION_ERROR'
+                    : status === 404
+                      ? 'RESOURCE_NOT_FOUND'
+                      : status === 413
+                        ? 'PAYLOAD_TOO_LARGE'
+                        : 'INTERNAL_ERROR',
         message:
           status >= 500
             ? 'Erreur interne du serveur'
@@ -46,6 +54,9 @@ export class ApiExceptionFilter implements ExceptionFilter {
               ? messages
               : 'Requête invalide',
         details: Array.isArray(messages) ? messages : [],
+        ...(typeof body === 'object' && body !== null && 'candidateIds' in body
+          ? { candidateIds: body.candidateIds }
+          : {}),
         requestId: response.getHeader('X-Request-Id'),
       },
     });

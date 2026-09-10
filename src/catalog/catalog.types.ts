@@ -9,7 +9,7 @@ export interface Dish {
   restaurantId: string;
   restaurant: string;
   area: string;
-  image: string;
+  image: string | null;
   description: string;
   servings: number;
   available: boolean;

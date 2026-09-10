@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { WebsiteImportService } from '../src/ingestion/website-import.service';
 import { randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
@@ -70,6 +72,8 @@ afterAll(async () => {
     ...restaurantIds,
     ...records.flatMap((r) => (r.restaurantId ? [r.restaurantId] : [])),
   ];
+  await db.sourceRecord.deleteMany({ where: { sourceKey: actor } });
+  await db.adminAudit.deleteMany({ where: { actor } });
   await db.dish.deleteMany({
     where: { restaurantId: { in: ownRestaurantIds } },
   });
@@ -78,6 +82,9 @@ afterAll(async () => {
   await db.osmImportRun.deleteMany({ where: { actor } });
   await db.$disconnect();
   delete process.env.CATALOG_SOURCE;
+  delete process.env.ADMIN_API_KEY;
+  delete process.env.ADMIN_ACTOR;
+  delete process.env.WEBSITE_SOURCES_FILE;
 });
 it('importe un brouillon et rejoue sans doublon', async () => {
   const payload = fixture(0);
@@ -291,4 +298,190 @@ it('contraint prix et coordonnées au niveau base', async () => {
   await expect(
     db.restaurant.update({ where: { id: firstId }, data: { latitude: 100 } }),
   ).rejects.toThrow();
+});
+
+it('le dry-run ne change aucune table et repère les doublons du lot', async () => {
+  const before = await Promise.all([
+    db.restaurant.count(),
+    db.osmRecord.count(),
+    db.osmImportRun.count(),
+    db.adminAudit.count(),
+  ]);
+  const one = fixture(20, {
+    tags: { amenity: 'restaurant', name: `Unique dry ${randomUUID()}` },
+  }).elements[0];
+  const two = { ...one, id: (baseId + 21n).toString() };
+  osmIds.push(baseId + 21n);
+  const result = await service.import({ elements: [one, two] }, options, true);
+  expect(result.result).toMatchObject({ created: 1, duplicates: 1 });
+  expect(
+    await Promise.all([
+      db.restaurant.count(),
+      db.osmRecord.count(),
+      db.osmImportRun.count(),
+      db.adminAudit.count(),
+    ]),
+  ).toEqual(before);
+});
+it('protège la saisie manuelle, conserve les champs vides et exige vérification/version', async () => {
+  process.env.ADMIN_API_KEY = randomUUID() + randomUUID();
+  process.env.ADMIN_ACTOR = actor;
+  const key = process.env.ADMIN_API_KEY;
+  await request(app.getHttpServer())
+    .get('/api/v1/admin/restaurants')
+    .expect(401);
+  const created = await request(app.getHttpServer())
+    .post('/api/v1/admin/restaurants')
+    .set('x-admin-key', key)
+    .send({
+      name: `Manuel ${randomUUID()}`,
+      area: actor,
+      latitude: -4.4,
+      longitude: 15.5,
+      evidenceRef: 'fixture terrain fictive',
+    })
+    .expect(201);
+  const id = created.body.data.id;
+  restaurantIds.push(id);
+  expect(created.body.data).toMatchObject({
+    address: null,
+    photo: null,
+    verified: false,
+    contentStatus: 'DRAFT',
+  });
+  await request(app.getHttpServer())
+    .post(`/api/v1/admin/restaurants/${id}/publish`)
+    .set('x-admin-key', key)
+    .send({ expectedVersion: 1 })
+    .expect(409);
+  await request(app.getHttpServer())
+    .patch(`/api/v1/admin/restaurants/${id}`)
+    .set('x-admin-key', key)
+    .send({
+      expectedVersion: 1,
+      verified: true,
+      open: true,
+      evidenceRef: 'fixture contrôle GPS',
+    })
+    .expect(200);
+  await request(app.getHttpServer())
+    .patch(`/api/v1/admin/restaurants/${id}`)
+    .set('x-admin-key', key)
+    .send({ expectedVersion: 1, name: 'Stale' })
+    .expect(409);
+  await request(app.getHttpServer())
+    .post(`/api/v1/admin/restaurants/${id}/publish`)
+    .set('x-admin-key', key)
+    .send({ expectedVersion: 2 })
+    .expect(201);
+  const dish = await request(app.getHttpServer())
+    .post(`/api/v1/admin/restaurants/${id}/dishes`)
+    .set('x-admin-key', key)
+    .send({
+      name: 'Plat à compléter',
+      category: 'Plats',
+      description: 'Description conservée',
+      servings: 3,
+    })
+    .expect(201);
+  expect(dish.body.data).toMatchObject({
+    price: null,
+    image: null,
+    contentStatus: 'DRAFT',
+  });
+  await request(app.getHttpServer())
+    .patch(`/api/v1/admin/dishes/${dish.body.data.id}`)
+    .set('x-admin-key', key)
+    .send({ expectedVersion: 1, contentStatus: 'PUBLISHED' })
+    .expect(409);
+  await request(app.getHttpServer())
+    .patch(`/api/v1/admin/dishes/${dish.body.data.id}`)
+    .set('x-admin-key', key)
+    .send({ expectedVersion: 1, price: 8000, contentStatus: 'PUBLISHED' })
+    .expect(200);
+  const visible = await request(app.getHttpServer())
+    .get(`/api/v1/dishes/${dish.body.data.id}`)
+    .expect(200);
+  expect(visible.body.data.image).toBeNull();
+  expect(visible.body.data.description).toBe('Description conservée');
+  expect(visible.body.data.servings).toBe(3);
+  expect(visible.body.data.open).toBe(true);
+  const candidates = await request(app.getHttpServer())
+    .get('/api/v1/admin/osm/candidates')
+    .set('x-admin-key', key)
+    .expect(200);
+  expect(typeof candidates.body.data[0].osmId).toBe('string');
+  const pending = await db.osmRecord.findUniqueOrThrow({
+    where: { osmType_osmId: { osmType: 'node', osmId: baseId + 2n } },
+  });
+  await request(app.getHttpServer())
+    .post(`/api/v1/admin/osm/candidates/${pending.id}/link`)
+    .set('x-admin-key', key)
+    .send({ restaurantId: id })
+    .expect(201);
+  await request(app.getHttpServer())
+    .post(`/api/v1/admin/osm/candidates/${pending.id}/link`)
+    .set('x-admin-key', key)
+    .send({ restaurantId: firstId })
+    .expect(409);
+  await request(app.getHttpServer())
+    .post('/api/v1/admin/osm/imports')
+    .set('x-admin-key', key)
+    .send({
+      payload: fixture(25),
+      area: actor,
+      snapshotAt: options.snapshotAt,
+      bbox: options.bbox,
+      dryRun: true,
+    })
+    .expect(201);
+});
+it('importe le HTML autorisé de manière idempotente et refuse une source non approuvée', async () => {
+  const file = `/tmp/${actor}-sources.json`;
+  process.env.WEBSITE_SOURCES_FILE = file;
+  const source = {
+    key: actor,
+    origin: 'https://restaurant.example',
+    pathPrefix: '/',
+    approved: true,
+    license: 'TEST_FIXTURE_ONLY',
+    evidenceRef: 'fixture créée pour ce test',
+    reviewedAt: new Date().toISOString(),
+    rights: ['store', 'display', 'commercial'],
+  };
+  writeFileSync(file, JSON.stringify([source]));
+  try {
+    const importer = new WebsiteImportService(db);
+    const input = {
+      html: readFileSync(
+        'src/ingestion/fixtures/restaurant-a.html',
+        'utf8',
+      ).replace('Table Test Kinshasa', `Unique site ${randomUUID()}`),
+      sourceKey: actor,
+      sourceUrl: 'https://restaurant.example/',
+      actor,
+      area: actor,
+    };
+    const before = await db.sourceRecord.count();
+    await importer.import(input, true);
+    expect(await db.sourceRecord.count()).toBe(before);
+    await importer.import(input, false);
+    expect((await importer.import(input, false)).replayed).toBe(true);
+    const record = await db.sourceRecord.findFirstOrThrow({
+      where: { sourceKey: actor },
+    });
+    expect(record.restaurantId).toBeTruthy();
+    restaurantIds.push(record.restaurantId!);
+    expect(
+      (
+        await db.restaurant.findUniqueOrThrow({
+          where: { id: record.restaurantId! },
+        })
+      ).photo,
+    ).toBeNull();
+    writeFileSync(file, JSON.stringify([{ ...source, approved: false }]));
+    await expect(importer.import(input, false)).rejects.toThrow('NOT_APPROVED');
+  } finally {
+    unlinkSync(file);
+  }
 });

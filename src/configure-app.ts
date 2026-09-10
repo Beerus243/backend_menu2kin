@@ -37,7 +37,7 @@ export function configureApp(app: INestApplication): void {
   const config = new DocumentBuilder()
     .setTitle('Menu2Kin — intégration Flutter')
     .setDescription(
-      'Catalogue mobile : source demo ou PostgreSQL selon CATALOG_SOURCE. Import OSM par commande serveur ; aucune route admin activée.',
+      'Catalogue mobile : source demo ou PostgreSQL selon CATALOG_SOURCE. Import OSM et édition via routes admin protégées par clé opérateur.',
     )
     .setVersion('0.1.0')
     .build();
